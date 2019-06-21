@@ -2,6 +2,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 import h5py
 import math
+import os
 
 def sigmoid(Z):
     """
@@ -39,6 +40,16 @@ def relu(Z):
     cache = Z 
     return A, cache
 
+def softmax(Z):
+
+    exps = np.exp(Z - np.max(Z))
+
+    A = exps / np.sum(exps, axis=0)
+
+    assert(A.shape == Z.shape)
+
+    cache = Z 
+    return A, cache
 
 def relu_backward(dA, cache):
     """
@@ -83,6 +94,18 @@ def sigmoid_backward(dA, cache):
     
     return dZ
 
+def softmax_backward(dA, cache, Y_orig = None, AL = None):
+    Z = cache
+
+    m = Y_orig.shape[1]
+
+    A, cache2 = softmax(Z)
+    A[Y_orig, range(m)] -= 1
+    dZ = A/m
+
+    assert (dZ.shape == Z.shape)
+    
+    return dZ
 
 def load_data(name):
     train_dataset = h5py.File('datasets/train_'+name+'.h5', "r")
@@ -116,7 +139,7 @@ def initialize_parameters(n_x, n_h, n_y):
                     b2 -- bias vector of shape (n_y, 1)
     """
     
-    # np.random.seed(1)
+    np.random.seed(1)
     
     W1 = np.random.randn(n_h, n_x)*0.01
     b1 = np.zeros((n_h, 1))
@@ -198,15 +221,15 @@ def linear_activation_forward(A_prev, W, b, activation):
              stored for computing the backward pass efficiently
     """
     
+    # Inputs: "A_prev, W, b". Outputs: "A, activation_cache".
+    Z, linear_cache = linear_forward(A_prev, W, b)
+
     if activation == "sigmoid":
-        # Inputs: "A_prev, W, b". Outputs: "A, activation_cache".
-        Z, linear_cache = linear_forward(A_prev, W, b)
         A, activation_cache = sigmoid(Z)
-    
     elif activation == "relu":
-        # Inputs: "A_prev, W, b". Outputs: "A, activation_cache".
-        Z, linear_cache = linear_forward(A_prev, W, b)
         A, activation_cache = relu(Z)
+    elif activation == "softmax":
+        A, activation_cache = softmax(Z)
     
     assert (A.shape == (W.shape[0], A_prev.shape[1]))
     cache = (linear_cache, activation_cache)
@@ -237,16 +260,19 @@ def L_model_forward(X, parameters):
         A_prev = A 
         A, cache = linear_activation_forward(A_prev, parameters['W' + str(l)], parameters['b' + str(l)], activation = "relu")
         caches.append(cache)
-    
-    # Implement LINEAR -> SIGMOID. Add "cache" to the "caches" list.
-    AL, cache = linear_activation_forward(A, parameters['W' + str(L)], parameters['b' + str(L)], activation = "sigmoid")
+
+    if parameters['W' + str(L)].shape[0] > 1:
+        AL, cache = linear_activation_forward(A, parameters['W' + str(L)], parameters['b' + str(L)], activation = "softmax")
+    else:
+        # Implement LINEAR -> SIGMOID. Add "cache" to the "caches" list.
+        AL, cache = linear_activation_forward(A, parameters['W' + str(L)], parameters['b' + str(L)], activation = "sigmoid")
     caches.append(cache)
     
-    assert(AL.shape == (1,X.shape[1]))
+    assert(AL.shape[1] == X.shape[1])
             
     return AL, caches
 
-def compute_cost(AL, Y):
+def compute_cost(AL, Y, Y_orig):
     """
     Implement the cost function defined by equation (7).
 
@@ -259,17 +285,21 @@ def compute_cost(AL, Y):
     """
     
     m = Y.shape[1]
+    
+    if Y.shape[0] > 1:
+        log_likelihood = -np.log(AL[Y_orig, range(m)])
+        cost = np.sum(log_likelihood) / m
+    else:
+        # Compute loss from aL and y.
+        cost = (1./m) * (-np.sum(np.dot(Y,np.log(AL).T)) - np.sum(np.dot(1-Y, np.log(1-AL).T)))
 
-    # Compute loss from aL and y.
-    cost = (1./m) * (-np.dot(Y,np.log(AL).T) - np.dot(1-Y, np.log(1-AL).T))
-
-    cost = np.squeeze(cost)      # To make sure your cost's shape is what we expect (e.g. this turns [[17]] into 17).
+        cost = np.squeeze(cost)      # To make sure your cost's shape is what we expect (e.g. this turns [[17]] into 17).
 
     assert(cost.shape == ())
     
     return cost
 
-def compute_cost_with_regularization(A3, Y, parameters, lambd):
+def compute_cost_with_regularization(A3, Y, parameters, lambd, Y_orig):
     """
     Implement the cost function with L2 regularization. See formula (2) above.
     
@@ -285,40 +315,15 @@ def compute_cost_with_regularization(A3, Y, parameters, lambd):
 
     m = Y.shape[1]
 
-    cross_entropy_cost = compute_cost(A3, Y) # This gives you the cross-entropy part of the cost
+    cross_entropy_cost = compute_cost(A3, Y, Y_orig) # This gives you the cross-entropy part of the cost
     
-    ### START CODE HERE ### (approx. 1 line)
     # L2_regularization_cost = lambd * (np.sum(np.square(W1)) + np.sum(np.square(W2)) + np.sum(np.square(W3))) / (2 * m) 
     parameters_sum = 0
     for l in range(1, L):
         parameters_sum += np.sum(np.square(parameters['W' + str(l)]))
     L2_regularization_cost = lambd * parameters_sum / (2 * m)
-    ### END CODER HERE ###
     
     cost = cross_entropy_cost + L2_regularization_cost
-    
-    return cost
-
-def compute_cost_with_mult(AL, Y):
-    """
-    Implement the cost function defined by equation (7).
-
-    Arguments:
-    AL -- probability vector corresponding to your label predictions, shape (1, number of examples)
-    Y -- true "label" vector (for example: containing 0 if non-cat, 1 if cat), shape (1, number of examples)
-
-    Returns:
-    cost -- cross-entropy cost
-    """
-    
-    m = Y.shape[1]
-
-    # Compute loss from aL and y.
-    cost = (1./m) * (-np.dot(Y,np.log(AL).T) - np.dot(1-Y, np.log(1-AL).T))
-
-    cost = np.squeeze(cost)      # To make sure your cost's shape is what we expect (e.g. this turns [[17]] into 17).
-
-    assert(cost.shape == ())
     
     return cost
 
@@ -350,7 +355,7 @@ def linear_backward(dZ, cache, regularization_lambd = 0):
     
     return dA_prev, dW, db
 
-def linear_activation_backward(dA, cache, activation, regularization_lambd = 0):
+def linear_activation_backward(dA, cache, activation, regularization_lambd = 0, Y_orig = None, AL = None):
     """
     Implement the backward propagation for the LINEAR->ACTIVATION layer.
     
@@ -368,15 +373,16 @@ def linear_activation_backward(dA, cache, activation, regularization_lambd = 0):
     
     if activation == "relu":
         dZ = relu_backward(dA, activation_cache)
-        dA_prev, dW, db = linear_backward(dZ, linear_cache, regularization_lambd)
-        
     elif activation == "sigmoid":
         dZ = sigmoid_backward(dA, activation_cache)
-        dA_prev, dW, db = linear_backward(dZ, linear_cache, regularization_lambd)
-    
+    elif activation == "softmax":
+        dZ = softmax_backward(dA, activation_cache, Y_orig = Y_orig, AL = AL)
+
+    dA_prev, dW, db = linear_backward(dZ, linear_cache, regularization_lambd)
+        
     return dA_prev, dW, db
 
-def L_model_backward(AL, Y, caches):
+def L_model_backward(AL, Y, caches, Y_orig = None):
     """
     Implement the backward propagation for the [LINEAR->RELU] * (L-1) -> LINEAR -> SIGMOID group
     
@@ -397,13 +403,16 @@ def L_model_backward(AL, Y, caches):
     L = len(caches) # the number of layers
     m = AL.shape[1]
     Y = Y.reshape(AL.shape) # after this line, Y is the same shape as AL
-    
+
     # Initializing the backpropagation
     dAL = - (np.divide(Y, AL) - np.divide(1 - Y, 1 - AL))
-    
+
     # Lth layer (SIGMOID -> LINEAR) gradients. Inputs: "AL, Y, caches". Outputs: "grads["dAL"], grads["dWL"], grads["dbL"]
     current_cache = caches[L-1]
-    grads["dA" + str(L-1)], grads["dW" + str(L)], grads["db" + str(L)] = linear_activation_backward(dAL, current_cache, activation = "sigmoid")
+    if Y.shape[0] > 1:
+        grads["dA" + str(L-1)], grads["dW" + str(L)], grads["db" + str(L)] = linear_activation_backward(dAL, current_cache, activation = "softmax", Y_orig = Y_orig, AL = AL)
+    else:
+        grads["dA" + str(L-1)], grads["dW" + str(L)], grads["db" + str(L)] = linear_activation_backward(dAL, current_cache, activation = "sigmoid")
     
     for l in reversed(range(L-1)):
         # lth layer: (RELU -> LINEAR) gradients.
@@ -415,7 +424,7 @@ def L_model_backward(AL, Y, caches):
 
     return grads
 
-def L_model_backward_with_regularization(AL, Y, caches, regularization_lambd):
+def L_model_backward_with_regularization(AL, Y, caches, regularization_lambd, Y_orig = None):
     """
     Implement the backward propagation for the [LINEAR->RELU] * (L-1) -> LINEAR -> SIGMOID group
     
@@ -442,7 +451,10 @@ def L_model_backward_with_regularization(AL, Y, caches, regularization_lambd):
     
     # Lth layer (SIGMOID -> LINEAR) gradients. Inputs: "AL, Y, caches". Outputs: "grads["dAL"], grads["dWL"], grads["dbL"]
     current_cache = caches[L-1]
-    grads["dA" + str(L-1)], grads["dW" + str(L)], grads["db" + str(L)] = linear_activation_backward(dAL, current_cache, activation = "sigmoid", regularization_lambd = regularization_lambd)
+    if Y.shape[0] > 1:
+        grads["dA" + str(L-1)], grads["dW" + str(L)], grads["db" + str(L)] = linear_activation_backward(dAL, current_cache, activation = "softmax", regularization_lambd = regularization_lambd, Y_orig = Y_orig)
+    else:
+        grads["dA" + str(L-1)], grads["dW" + str(L)], grads["db" + str(L)] = linear_activation_backward(dAL, current_cache, activation = "sigmoid", regularization_lambd = regularization_lambd)
 
     for l in reversed(range(L-1)):
         # lth layer: (RELU -> LINEAR) gradients.
@@ -591,23 +603,25 @@ def predict(X, y, parameters):
     m = X.shape[1]
     n = len(parameters) // 2 # number of layers in the neural network
     p = np.zeros((1,m))
-    
+
     # Forward propagation
     probas, caches = L_model_forward(X, parameters)
-    
-    # convert probas to 0/1 predictions
-    for i in range(0, probas.shape[1]):
-        if probas[0,i] > 0.5:
-            p[0,i] = 1
-        else:
-            p[0,i] = 0
-    
-    #print results
-    #print ("predictions: " + str(p))
-    #print ("true labels: " + str(y))
-    print("Accuracy: "  + str(np.sum((p == y)/m)))
+
+    if (max(np.squeeze(y)) > 1):
+        probas_max_index = np.argmax(probas, axis = 0)
+        accuracy = np.sum((probas_max_index == y)/m)
+    else:        
+        # convert probas to 0/1 predictions
+        for i in range(0, probas.shape[1]):
+            if probas[0,i] > 0.5:
+                p[0,i] = 1
+            else:
+                p[0,i] = 0
+        accuracy = np.sum((p == y)/m)
         
-    return p
+    print("Accuracy: "  + str(accuracy))
+        
+    return p, accuracy
 
 def predict_minsort(classes, X, y, parameters, shape, figsize = (12.0, 2.0)):
     
@@ -661,7 +675,7 @@ def print_mislabeled_images(classes, X, y, p, shape, figsize = (12.0, 2.0)):
         plt.title("Pred: " + classes[int(p[0,index])].decode("utf-8") + " \n Class: " + classes[y[0,index]].decode("utf-8"), fontsize=8)
     plt.show()
 
-def L_layer_model(X, Y, layers_dims, learning_rate = 0.0075, num_iterations = 3000, print_cost = False, regularization_lambd = 0.7, optimization = None, mini_batch_size = 64):#lr was 0.009
+def L_layer_model(X, Y, layers_dims, learning_rate = 0.0075, learning_decay_rate = 1, num_iterations = 3000, print_cost = False, regularization_lambd = 0.7, optimization = None, mini_batch_size = 64, Y_orig = None):#lr was 0.009
     """
     Implements a L-layer neural network: [LINEAR->RELU]*(L-1)->LINEAR->SIGMOID.
     
@@ -684,71 +698,80 @@ def L_layer_model(X, Y, layers_dims, learning_rate = 0.0075, num_iterations = 30
     # np.random.seed(1)
     costs = []                         # keep track of cost
     t = 0
+    last_cost = 100
+    learning_rate_decay = learning_rate
+    last_parameters = False
 
     # Parameters initialization. (\u2248 1 line of code)
     parameters = initialize_parameters_deep(layers_dims)
+    # parameters = load('catvnoncat')
 
     # Initialize the optimizer
     if optimization:
         v, s = initialize_adam(parameters)
 
+    k = 0
     # Loop (gradient descent)
     for i in range(0, num_iterations):
 
         minibatches = random_mini_batches(X, Y, mini_batch_size)
 
-        k = 0
+        learning_rate_decay = learning_rate * (learning_decay_rate ** i)
+
         for minibatch in minibatches:
 
             # Select a minibatch
             (minibatch_X, minibatch_Y) = minibatch
 
             # Forward propagation: [LINEAR -> RELU]*(L-1) -> LINEAR -> SIGMOID.
-            ### START CODE HERE ### (\u2248 1 line of code)
             AL, caches = L_model_forward(X, parameters)
-            ### END CODE HERE ###
             
-            # Compute cost.
-            ### START CODE HERE ### (\u2248 1 line of code)
-            if regularization_lambd == 0:
-                cost = compute_cost(AL, Y)
-            else:
-                cost = compute_cost_with_regularization(AL, Y, parameters, regularization_lambd)
-            ### END CODE HERE ###
-        
             # Backward propagation.
-            ### START CODE HERE ### (\u2248 1 line of code)
             if regularization_lambd == 0:
-                grads = L_model_backward(AL, Y, caches)
+                grads = L_model_backward(AL, Y, caches, Y_orig)
             else:
-                grads = L_model_backward_with_regularization(AL, Y, caches, regularization_lambd)
-            ### END CODE HERE ###
+                grads = L_model_backward_with_regularization(AL, Y, caches, regularization_lambd, Y_orig)
     
             # Update parameters.
-            ### START CODE HERE ### (\u2248 1 line of code)
             if optimization:
                 t = t + 1 # Adam counter
-                parameters, v, s = update_parameters_with_adam(parameters, grads, v, s, t, learning_rate, optimization['beta1'], optimization['beta2'], optimization['epsilon'])
+                parameters, v, s = update_parameters_with_adam(parameters, grads, v, s, t, learning_rate_decay, optimization['beta1'], optimization['beta2'], optimization['epsilon'])
             else:
-                parameters = update_parameters(parameters, grads, learning_rate)
-            ### END CODE HERE ###
+                parameters = update_parameters(parameters, grads, learning_rate_decay)
+
+            # Compute cost.
+            if regularization_lambd == 0:
+                cost = compute_cost(AL, Y, Y_orig)
+            else:
+                cost = compute_cost_with_regularization(AL, Y, parameters, regularization_lambd, Y_orig)
+        
+            # if cost > last_cost:
+            #     learning_rate_decay = learning_rate_decay * 0.95
+            #     parameters = last_parameters
+            #     # print ("Cost %f > %f reset : %.5f i=%f" %(cost, last_cost, learning_rate_decay, i))
+            #     break_flag = 1
+            #     # break
+            # else:
+            #     learning_rate_decay = learning_rate_decay / 0.992
+            #     last_cost = cost
+            #     last_parameters = parameters
+            #     break_flag = 0
+
+        # if break_flag == 1:
+        #     continue
 
         # Print the cost every 100 training example
-        if print_cost and i % 10 == 0:
+        if print_cost and i % (num_iterations/10) == 0:
             print ("Cost after iteration %i: %f" %(i, cost))
-        if print_cost and i % 10 == 0:
-            costs.append(cost)
+            print('learning_rate: %.5f' % learning_rate_decay)
+        # if print_cost and i % (num_iterations/25) == 0:
+        costs.append(cost)
         k += 1
-            
-    if print_cost:
-        # plot the cost
-        plt.plot(np.squeeze(costs))
-        plt.ylabel('cost')
-        plt.xlabel('iterations (per tens)')
-        plt.title("Learning rate =" + str(learning_rate))
-        plt.show()
+    print ("Cost after iteration %i: %f" %(i, cost))
+    print('learning_rate: %.5f' % learning_rate_decay)
+    print(k)
     
-    return parameters
+    return parameters, costs
 
 # GRADED FUNCTION: random_mini_batches
 def random_mini_batches(X, Y, mini_batch_size = 64, seed = 0):
@@ -771,7 +794,7 @@ def random_mini_batches(X, Y, mini_batch_size = 64, seed = 0):
     # Step 1: Shuffle (X, Y)
     permutation = list(np.random.permutation(m))
     shuffled_X = X[:, permutation]
-    shuffled_Y = Y[:, permutation].reshape((1,m))
+    shuffled_Y = Y[:, permutation].reshape((Y.shape[0],m))
 
     # Step 2: Partition (shuffled_X, shuffled_Y). Minus the end case.
     num_complete_minibatches = math.floor(m/mini_batch_size) # number of mini batches of size mini_batch_size in your partitionning
@@ -794,8 +817,11 @@ def random_mini_batches(X, Y, mini_batch_size = 64, seed = 0):
     
     return mini_batches
     
-def convert_to_one_hot(Y, C):
+def convert_to_one_hot(Y, C = None):
+    if C == 1:
+        return Y
     Y = np.eye(C)[Y.reshape(-1)].T
+    # Y = np.eye(3)[[0,1,2]].T
     return Y
 
 def save(file_name, value):
@@ -810,3 +836,49 @@ def load(file_name):
         for i in dataset_orig.keys():
             dataset[i] = np.array(dataset_orig[i])
     return dataset
+
+def save_list(file_name, value):
+    print(value)
+    with h5py.File('datasets/'+file_name+'.h5', "w") as dataset:
+        dataset['data'] = value
+    return dataset
+
+def load_list(file_name):
+    with h5py.File('datasets/'+file_name+'.h5', "r") as dataset_orig:
+        dataset = dataset_orig['data']
+    return dataset
+
+# def log_cost(cost, learning_rate, learning_decay_rate, tran_accuracy, test_accuracy):
+#     if os.path.isfile('datasets/costs_log.h5') == False:
+#         save_list('costs_log', [{
+#             'cost': cost,
+#             'learning_rate': learning_rate,
+#             'learning_decay_rate': learning_decay_rate,
+#             'tran_accuracy': tran_accuracy,
+#             'test_accuracy': test_accuracy
+#         }])
+#         return True
+#     log = load_list('costs_log')
+#     data = {
+#         'cost': cost,
+#         'learning_rate': learning_rate,
+#         'learning_decay_rate': learning_decay_rate,
+#         'tran_accuracy': tran_accuracy,
+#         'test_accuracy': test_accuracy
+#     }
+#     if log.shape[0] > 5:
+#         log = np.delete(log, 0, 0)
+#     np.append(log, [data], axis = 0)
+#     save_list('costs_log', log)
+
+# def get_cost():
+#     data = load('costs_log')
+#     data.costs = 
+#     if os.path.isfile('costs_log.npy') == False:
+#         np.save('costs_log', np.array([cost]))
+#         return True
+#     costs=np.load('costs_log.npy')
+#     if costs.shape[0] > 5:
+#         costs = np.delete(costs, 0, 0)
+#     costs = np.append(costs, [cost], axis = 0)
+#     np.save('costs_log', costs)
