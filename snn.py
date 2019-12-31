@@ -6,7 +6,7 @@ import matplotlib.pyplot as plt
 # import scipy
 from PIL import Image
 # from scipy import ndimage
-from utils import *
+from snn_utils import *
 
 # %matplotlib inline
 plt.rcParams['figure.figsize'] = (5.0, 5.0) # set default size of plots
@@ -22,16 +22,9 @@ plt.rcParams['image.cmap'] = 'gray'
 train_name = 'catvnoncat'
 
 # load dataset
-# train_x_orig, train_y_orig, test_x_orig, test_y_orig, classes = load_data('catvnoncat')
-train_x_orig, train_y_orig, test_x_orig, test_y_orig, classes = load_data('signs')
-
-
-# # Example of a picture
-# index = 92
-# plt.imshow(train_x_orig[index])
-# plt.show()
-# print ("y = " + str(train_y_orig[0,index]) + ". It's a " + str(classes[train_y_orig[0,index]]) +  " picture.")
-
+train_x_orig, train_y_orig, test_x_orig, test_y_orig, classes = load_data('catvnoncat')
+# train_x_orig, train_y_orig, test_x_orig, test_y_orig, classes = load_data('signs')
+# train_x_orig, train_y_orig, test_x_orig, test_y_orig, classes = load_data('like')
 
 # Explore your dataset 
 # m_train = train_x_orig.shape[0]
@@ -55,7 +48,7 @@ test_x_flatten = test_x_orig.reshape(test_x_orig.shape[0], -1).T
 train_x = train_x_flatten[:,:] / 255.
 test_x = test_x_flatten[:,:] / 255.
 
-# ¶à·ÖÀàÈÎÎñone hot´¦Àí
+# 多分类任务one hot处理
 max_num = np.squeeze(np.max(train_y_orig, axis=1))
 if max_num > 1:
     train_y = convert_to_one_hot(train_y_orig, max_num + 1)
@@ -69,8 +62,9 @@ print ("train_x's shape: " + str(train_x.shape))
 print ("test_x's shape: " + str(test_x.shape))
 print ("train_y's shape: " + str(train_y.shape))
 print ("test_y's shape: " + str(test_y.shape))
-# print("train_y's true: " + str(np.sum(train_y)) + ' %.1f%%'%(np.sum(train_y) / train_y.shape[1] * 100))
-# print("test_y's true: " + str(np.sum(test_y)) + ' %.1f%%'%(np.sum(test_y) / test_y.shape[1] * 100))
+if max_num == 1:
+    print("train_y's true: " + str(np.sum(train_y)) + ' %.1f%%'%(np.sum(train_y) / train_y.shape[1] * 100))
+    print("test_y's true: " + str(np.sum(test_y)) + ' %.1f%%'%(np.sum(test_y) / test_y.shape[1] * 100))
 # print(test_y)
 # exit()
 
@@ -120,7 +114,7 @@ pred_test, test_accuracy = predict(test_x, test_y_orig, parameters)
 #             "Tran Accuracy = %.3f "%tran_accuracy +
 #             "Test Accuracy = %.3f"%test_accuracy
 #         )
-# # plt.savefig('D:\www\snn\plot\%.5f-%.4f-%.3f-%.3f.png'%(learning_rate,learning_decay_rate,tran_accuracy,test_accuracy))
+# plt.savefig('D:\www\snn\plot\%.5f-%.4f-%.3f-%.3f.png'%(learning_rate,learning_decay_rate,tran_accuracy,test_accuracy))
 # plt.savefig('D:\www\snn\plot\%s.png'%time.strftime("%Y-%m-%d %H-%M-%S", time.localtime()))
 # plt.show()
 # print_mislabeled_images(classes, test_x, test_y, pred_test, (64,64,3))

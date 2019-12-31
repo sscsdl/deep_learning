@@ -123,7 +123,6 @@ def load_data(name):
     
     return train_set_x_orig, train_set_y_orig, test_set_x_orig, test_set_y_orig, classes
 
-
 def initialize_parameters(n_x, n_h, n_y):
     """
     Argument:
@@ -694,6 +693,7 @@ def L_layer_model(X, Y, layers_dims, learning_rate = 0.0075, learning_decay_rate
         args = locals();
         del args['X']
         del args['Y']
+        del args['Y_orig']
         print(args)
     # np.random.seed(1)
     costs = []                         # keep track of cost
@@ -714,24 +714,24 @@ def L_layer_model(X, Y, layers_dims, learning_rate = 0.0075, learning_decay_rate
     # Loop (gradient descent)
     for i in range(0, num_iterations):
 
-        minibatches = random_mini_batches(X, Y, mini_batch_size)
+        minibatches = random_mini_batches(X, Y, mini_batch_size, seed = 0, Y_orig = Y_orig)
 
         learning_rate_decay = learning_rate * (learning_decay_rate ** i)
 
         for minibatch in minibatches:
 
             # Select a minibatch
-            (minibatch_X, minibatch_Y) = minibatch
+            (minibatch_X, minibatch_Y, minibatch_Y_orig) = minibatch
 
             # Forward propagation: [LINEAR -> RELU]*(L-1) -> LINEAR -> SIGMOID.
-            AL, caches = L_model_forward(X, parameters)
+            AL, caches = L_model_forward(minibatch_X, parameters)
             
             # Backward propagation.
             if regularization_lambd == 0:
-                grads = L_model_backward(AL, Y, caches, Y_orig)
+                grads = L_model_backward(AL, minibatch_Y, caches, minibatch_Y_orig)
             else:
-                grads = L_model_backward_with_regularization(AL, Y, caches, regularization_lambd, Y_orig)
-    
+                grads = L_model_backward_with_regularization(AL, minibatch_Y, caches, regularization_lambd, minibatch_Y_orig)
+
             # Update parameters.
             if optimization:
                 t = t + 1 # Adam counter
@@ -741,9 +741,9 @@ def L_layer_model(X, Y, layers_dims, learning_rate = 0.0075, learning_decay_rate
 
             # Compute cost.
             if regularization_lambd == 0:
-                cost = compute_cost(AL, Y, Y_orig)
+                cost = compute_cost(AL, minibatch_Y, minibatch_Y_orig)
             else:
-                cost = compute_cost_with_regularization(AL, Y, parameters, regularization_lambd, Y_orig)
+                cost = compute_cost_with_regularization(AL, minibatch_Y, parameters, regularization_lambd, minibatch_Y_orig)
         
             # if cost > last_cost:
             #     learning_rate_decay = learning_rate_decay * 0.95
@@ -774,7 +774,7 @@ def L_layer_model(X, Y, layers_dims, learning_rate = 0.0075, learning_decay_rate
     return parameters, costs
 
 # GRADED FUNCTION: random_mini_batches
-def random_mini_batches(X, Y, mini_batch_size = 64, seed = 0):
+def random_mini_batches(X, Y, mini_batch_size = 64, seed = 0, Y_orig = None):
     """
     Creates a list of random minibatches from (X, Y)
     
@@ -795,24 +795,36 @@ def random_mini_batches(X, Y, mini_batch_size = 64, seed = 0):
     permutation = list(np.random.permutation(m))
     shuffled_X = X[:, permutation]
     shuffled_Y = Y[:, permutation].reshape((Y.shape[0],m))
+    if Y_orig.any():
+        shuffled_Y_orig = Y_orig[:, permutation].reshape((Y_orig.shape[0],m))
 
     # Step 2: Partition (shuffled_X, shuffled_Y). Minus the end case.
+    if mini_batch_size > m or mini_batch_size == 0:
+        mini_batch_size = m
     num_complete_minibatches = math.floor(m/mini_batch_size) # number of mini batches of size mini_batch_size in your partitionning
     for k in range(0, num_complete_minibatches):
-        ### START CODE HERE ### (approx. 2 lines)
+
         mini_batch_X = shuffled_X[:, k * mini_batch_size : (k+1) * mini_batch_size]
         mini_batch_Y = shuffled_Y[:, k * mini_batch_size : (k+1) * mini_batch_size]
-        ### END CODE HERE ###
-        mini_batch = (mini_batch_X, mini_batch_Y)
+        if Y_orig.any():
+            mini_batch_Y_orig = shuffled_Y_orig[:, k * mini_batch_size : (k+1) * mini_batch_size]
+        else:
+            mini_batch_Y_orig = mini_batch_Y
+
+        mini_batch = (mini_batch_X, mini_batch_Y, mini_batch_Y_orig)
         mini_batches.append(mini_batch)
     
     # Handling the end case (last mini-batch < mini_batch_size)
     if m % mini_batch_size != 0:
-        ### START CODE HERE ### (approx. 2 lines)
+
         mini_batch_X = shuffled_X[:, mini_batch_size * num_complete_minibatches : m]
         mini_batch_Y = shuffled_Y[:, mini_batch_size * num_complete_minibatches : m]
-        ### END CODE HERE ###
-        mini_batch = (mini_batch_X, mini_batch_Y)
+        if Y_orig.any():
+            mini_batch_Y_orig = shuffled_Y_orig[:, mini_batch_size * num_complete_minibatches : m]
+        else:
+            mini_batch_Y_orig = mini_batch_Y
+
+        mini_batch = (mini_batch_X, mini_batch_Y, mini_batch_Y_orig)
         mini_batches.append(mini_batch)
     
     return mini_batches
